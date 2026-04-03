@@ -93,36 +93,11 @@ class Exp_Long_Term_Forecast_MF(Exp_Basic):
             return None
         return obj.float().to(self.device)
 
-    def _to_group_dict(self, obj):
-        """Convert a list-structured MF batch to a dict keyed by frequency.
-
-        Accepts either already-dict batches (returned unchanged) or a list/tuple
-        with the same length as `self.args.mf_freqs_list`. On mismatch a
-        `ValueError` is raised so configuration issues are detected early.
-        """
-
-        if obj is None:
-            return None
-        if isinstance(obj, dict):
-            return obj
-        if not isinstance(obj, (list, tuple)):
-            raise ValueError('MF experiment expects list or dict batches for mixed data.')
-
-        group_keys = getattr(self.args, 'mf_freqs_list', [])
-        if len(obj) != len(group_keys):
-            raise ValueError('Batch group count does not match configured mixed groups.')
-        return {group_key: value for group_key, value in zip(group_keys, obj)}
-
     # === ADDED (vs Exp_Long_Term_Forecast) ===
     # Step: validate MF batch structure and move all fields to device.
     # Why: MF assumes frequency-keyed dict batches rather than plain tensors.
     def _prepare_batch(self, batch_x, batch_y, batch_x_mark, batch_y_mark):
-        """Validate MF batch format and move all tensors to the selected device."""
-        batch_x = self._to_group_dict(batch_x)
-        batch_y = self._to_group_dict(batch_y)
-        batch_x_mark = self._to_group_dict(batch_x_mark)
-        batch_y_mark = self._to_group_dict(batch_y_mark)
-
+        """Move already-dict MF batches to the selected device."""
         batch_x = self._to_device(batch_x)
         batch_y = self._to_device(batch_y)
         batch_x_mark = self._to_device(batch_x_mark)

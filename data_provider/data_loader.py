@@ -62,6 +62,7 @@ class Dataset_ETT_hour(Dataset):
         border2s = [12 * 30 * 24, 12 * 30 * 24 + 4 * 30 * 24, 12 * 30 * 24 + 8 * 30 * 24]
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
+        self.split_start_index = border1
 
         if self.features == 'M' or self.features == 'MS':
             cols_data = df_raw.columns[1:]
@@ -150,6 +151,7 @@ class Dataset_ETT_minute(Dataset):
         border2s = [12 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 4 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 8 * 30 * 24 * 4]
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
+        self.split_start_index = border1
 
         if self.features == 'M' or self.features == 'MS':
             cols_data = df_raw.columns[1:]
@@ -250,6 +252,7 @@ class Dataset_Custom(Dataset):
         border2s = [num_train, num_train + num_vali, len(df_raw)]
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
+        self.split_start_index = border1
 
         if self.features == 'M' or self.features == 'MS':
             cols_data = df_raw.columns[1:]
@@ -301,28 +304,20 @@ class Dataset_Custom(Dataset):
 
 
 class _MixedSequenceMixin:
-        """Shared helpers for mixed-frequency sequence sampling.
+    """Helpers for grouped mixed-frequency sequence sampling.
 
-        The mixin expects two parameters provided by the constructor caller:
-        - `downsampling_rates`: list of integer stride factors (1 means no downsampling)
-        - `freq_groups`: list of lists, where each inner list contains column indices
-            that belong to the same frequency group.
-        These helper methods normalize and validate the configuration used by
-        `_mixed_getitem`.
-        """
+    Mixed datasets output four dicts keyed by group names (`g0`, `g1`, ...):
+    - `x`: encoder input per group
+    - `y`: decoder target window per group
+    - `x_mark`: encoder time features per group
+    - `y_mark`: decoder time features per group
+    """
 
-        def _init_mixed_config(self, downsampling_rates, freq_groups):
+    def _init_mixed_config(self, downsampling_rates, freq_groups):
         self.downsampling_rates = [int(rate) for rate in (downsampling_rates or [1])]
         self.freq_groups = [[int(col) for col in group] for group in (freq_groups or [])]
 
     def _validate_mixed_config(self):
-        """Normalize and validate the provided mixed-frequency configuration.
-
-        - If no `freq_groups` provided, use all columns as a single group.
-        - Allow a single `downsampling_rates` value to be broadcast to all groups.
-        - Ensure indexes are within the data column range and groups are non-empty.
-        """
-
         if not self.freq_groups:
             self.freq_groups = [list(range(self.data_x.shape[1]))]
 
@@ -333,7 +328,9 @@ class _MixedSequenceMixin:
             raise ValueError('downsampling_rates must match freq_groups length or provide a single shared rate.')
 
         max_col = self.data_x.shape[1] - 1
-        for group in self.freq_groups:
+        for rate, group in zip(self.downsampling_rates, self.freq_groups):
+            if rate <= 0:
+                raise ValueError('downsampling_rates must be positive integers.')
             if not group:
                 raise ValueError('freq_groups entries must not be empty.')
             for col_idx in group:
@@ -341,41 +338,34 @@ class _MixedSequenceMixin:
                     raise ValueError(f'freq_groups column index out of range: {col_idx}')
 
     def _mixed_getitem(self, index):
-        """Return a single mixed-frequency sample as four lists.
-
-        The return value follows the original dataset signature but each
-        returned element is a list with one entry per frequency group:
-        `(seq_x_list, seq_y_list, seq_x_mark_list, seq_y_mark_list)`.
-
-        Implementation notes:
-        - Each group's window is aligned to its sampling grid to avoid
-          partial (NaN) reads when using large strides.
-        - Downsampling is implemented with NumPy-style slicing `start:stop:rate`.
-        """
-
         s_begin = index
         s_end = s_begin + self.seq_len
-        r_begin = s_end - self.label_len
-        r_end = r_begin + self.label_len + self.pred_len
 
-        seq_x_list = []
-        seq_y_list = []
-        seq_x_mark_list = []
-        seq_y_mark_list = []
+        seq_x_dict = {}
+        seq_y_dict = {}
+        seq_x_mark_dict = {}
+        seq_y_mark_dict = {}
 
-        for rate, group in zip(self.downsampling_rates, self.freq_groups):
-            # Align the group's sampling window to the group's stride grid.
-            group_s_begin = (s_begin // rate) * rate
+        split_anchor = getattr(self, 'split_start_index', 0)
+
+        for group_idx, (rate, group) in enumerate(zip(self.downsampling_rates, self.freq_groups)):
+            group_key = f'g{group_idx}'
+
+            # Frequency alignment: anchor each group's local index to a consistent temporal grid.
+            global_s_begin = split_anchor + s_begin
+            aligned_global_s_begin = (global_s_begin // rate) * rate
+            group_s_begin = max(0, aligned_global_s_begin - split_anchor)
             group_s_end = group_s_begin + self.seq_len
+
             group_r_begin = group_s_end - self.label_len
             group_r_end = group_r_begin + self.label_len + self.pred_len
 
-            seq_x_list.append(self.data_x[group_s_begin:group_s_end:rate][:, group])
-            seq_y_list.append(self.data_y[group_r_begin:group_r_end:rate][:, group])
-            seq_x_mark_list.append(self.data_stamp[group_s_begin:group_s_end:rate])
-            seq_y_mark_list.append(self.data_stamp[group_r_begin:group_r_end:rate])
+            seq_x_dict[group_key] = self.data_x[group_s_begin:group_s_end:rate][:, group]
+            seq_y_dict[group_key] = self.data_y[group_r_begin:group_r_end:rate][:, group]
+            seq_x_mark_dict[group_key] = self.data_stamp[group_s_begin:group_s_end:rate]
+            seq_y_mark_dict[group_key] = self.data_stamp[group_r_begin:group_r_end:rate]
 
-        return seq_x_list, seq_y_list, seq_x_mark_list, seq_y_mark_list
+        return seq_x_dict, seq_y_dict, seq_x_mark_dict, seq_y_mark_dict
 
 
 class Dataset_Custom_Mixed(_MixedSequenceMixin, Dataset_Custom):
