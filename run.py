@@ -1,66 +1,81 @@
+"""Top-level CLI for running experiments.
+
+This script exposes a command-line interface that configures datasets,
+models, and training options. It includes helper parsing for mixed-frequency
+experiments: `--downsampling_rates` and `--freq_groups`.
+
+`--freq_groups` follows the string format: "0,1;2,3,4" → [[0,1],[2,3,4]].
+"""
+
 import argparse
+import math
 import torch
 from experiments.exp_long_term_forecasting import Exp_Long_Term_Forecast
 from experiments.exp_long_term_forecasting_mf import Exp_Long_Term_Forecast_MF
 from experiments.exp_long_term_forecasting_partial import Exp_Long_Term_Forecast_Partial
 import random
 import numpy as np
-from utils.tools import parse_csv_list, parse_group_mapping, parse_float_mapping, parse_int_list
+
+
+def _parse_freq_groups(raw_value):
+    """Parse semicolon-separated feature group text into a nested list.
+
+    Example: "0,1;2,3,4" → [[0, 1], [2, 3, 4]]
+    Returns an empty list if `raw_value` is `None` or empty.
+    """
+
+    if raw_value is None:
+        return []
+    groups = []
+    for group_text in str(raw_value).split(';'):
+        group_text = group_text.strip()
+        if not group_text:
+            continue
+        group = []
+        for item in group_text.split(','):
+            item = item.strip()
+            if not item:
+                continue
+            group.append(int(item))
+        if group:
+            groups.append(group)
+    return groups
 
 
 def _prepare_mf_args(args):
-    args.mf_freqs_list = parse_csv_list(args.mf_freqs)
-    args.mf_seq_lens_list = parse_int_list(args.mf_seq_lens)
-    args.mf_pred_lens_list = parse_int_list(args.mf_pred_lens) if args.mf_pred_lens else []
-    args.mf_var_groups_map = parse_group_mapping(args.mf_var_groups)
-    args.mf_target_groups_map = parse_group_mapping(args.mf_target_groups)
-    args.mf_loss_weights_map = parse_float_mapping(args.mf_loss_weights)
+    """Derive MF helper arguments from CLI inputs.
 
-    if not args.mf_target_groups_map:
-        args.mf_target_groups_map = dict(args.mf_var_groups_map)
+    This function creates a stable list of frequency keys (`mf_freqs_list`)
+    and maps that store per-group sequence/forecast lengths used by the
+    MF experiment and model adapter.
+    """
 
-    if not args.mf_freqs_list:
-        raise ValueError('mf_freqs is empty.')
-    if len(args.mf_freqs_list) != len(args.mf_seq_lens_list):
-        raise ValueError('mf_seq_lens must match mf_freqs length.')
-    if args.mf_pred_lens_list and len(args.mf_pred_lens_list) != len(args.mf_freqs_list):
-        raise ValueError('mf_pred_lens must match mf_freqs length when provided.')
-    for freq in args.mf_freqs_list:
-        if freq not in args.mf_var_groups_map:
-            raise ValueError('Missing variable group for frequency: {}'.format(freq))
+    if len(args.downsampling_rates) not in (1, len(args.freq_groups_list)):
+        raise ValueError('downsampling_rates must contain one value or match freq_groups length.')
 
+    rates = args.downsampling_rates
+    if len(rates) == 1 and len(args.freq_groups_list) > 1:
+        rates = rates * len(args.freq_groups_list)
+
+    args.mf_freqs_list = [f'g{idx}' for idx in range(len(args.freq_groups_list))]
     args.mf_seq_lens_map = {
-        freq: seq_len for freq, seq_len in zip(args.mf_freqs_list, args.mf_seq_lens_list)
+        key: max(1, math.ceil(args.seq_len / rate))
+        for key, rate in zip(args.mf_freqs_list, rates)
     }
-
-    if args.mf_pred_lens_list:
-        args.mf_pred_lens_map = {
-            freq: pred_len for freq, pred_len in zip(args.mf_freqs_list, args.mf_pred_lens_list)
-        }
-    else:
-        args.mf_pred_lens_map = {freq: args.pred_len for freq in args.mf_freqs_list}
-
-    # In MF mode, derive shared core fields from the anchor frequency so
-    # downstream components do not depend on stale single-frequency values.
-    args.mf_anchor_freq = args.mf_anchor_freq if args.mf_anchor_freq else args.mf_freqs_list[0]
-    if args.mf_anchor_freq not in args.mf_freqs_list:
-        raise ValueError('mf_anchor_freq must be one of mf_freqs.')
-
-    args.seq_len = args.mf_seq_lens_map[args.mf_anchor_freq]
-    args.pred_len = args.mf_pred_lens_map[args.mf_anchor_freq]
-    args.freq = args.mf_anchor_freq
-
-    for freq in args.mf_freqs_list:
-        if freq not in args.mf_loss_weights_map:
-            args.mf_loss_weights_map[freq] = 1.0
-
+    args.mf_pred_lens_map = {
+        key: max(1, math.ceil(args.pred_len / rate))
+        for key, rate in zip(args.mf_freqs_list, rates)
+    }
+    args.mf_anchor_freq = args.mf_freqs_list[0] if args.mf_freqs_list else 'g0'
     return args
 
 
 def _validate_experiment_pairing(args):
-    """
-    Validate experiment name and model compatibility.
-    Raises ValueError on invalid combination.
+    """Validate that chosen experiment matches the selected model.
+
+    For safety the multi-frequency experiment (`multi_train`) requires
+    `--model MfITransformer` and conversely the `MfITransformer` model
+    is only meaningful when running `--exp_name multi_train`.
     """
     # Multi-frequency experiment requires the mixed-frequency model
     if args.exp_name == 'multi_train' and args.model != 'MfITransformer':
@@ -154,26 +169,17 @@ if __name__ == '__main__':
     parser.add_argument('--partial_start_index', type=int, default=0, help='the start index of variates for partial training, '
                                                                            'you can select [partial_start_index, min(enc_in + partial_start_index, N)]')
 
-    # Multi-frequency extension (mf mode is enabled when exp_name == 'multi_train')
-    parser.add_argument('--mf_freqs', type=str, default='1h,1d',
-                        help='comma-separated frequencies, e.g. 15min,1h,1d')
-    parser.add_argument('--mf_seq_lens', type=str, default='96,7',
-                        help='comma-separated input lengths aligned with mf_freqs')
-    parser.add_argument('--mf_pred_lens', type=str, default='',
-                        help='optional comma-separated pred lengths aligned with mf_freqs')
-    parser.add_argument('--mf_var_groups', type=str,
-                        default='1h:TEMP|PRES|DEWP|RAIN|WSPM;1d:PM2.5|PM10|SO2|NO2|CO|O3',
-                        help='freq to variables map: freq:var1|var2;freq2:var3|var4')
-    parser.add_argument('--mf_target_groups', type=str, default='',
-                        help='optional freq to target variables map, defaults to mf_var_groups')
-    parser.add_argument('--mf_loss_weights', type=str, default='',
-                        help='optional freq to loss weight map, e.g. 1h:1.0;1d:1.0')
-    parser.add_argument('--mf_anchor_freq', type=str, default='',
-                        help='optional anchor frequency, defaults to the first in mf_freqs')
+    # Mixed-frequency loader configuration
+    parser.add_argument('--downsampling_rates', nargs='+', type=int, default=[1],
+                        help='downsampling rate per frequency group')
+    parser.add_argument('--freq_groups', type=str, default='0,1,2,3,4,5,6',
+                        help='semicolon-separated groups of feature indices, e.g. "0,1;2,3,4;5,6"')
 
     args = parser.parse_args()
-    
+    args.freq_groups_list = _parse_freq_groups(args.freq_groups)
     if args.exp_name == 'multi_train':
+        if not args.freq_groups_list:
+            raise ValueError('freq_groups must define at least one mixed group for multi_train.')
         args = _prepare_mf_args(args)
     args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
 
