@@ -79,20 +79,49 @@ class Exp_Long_Term_Forecast_MF(Exp_Basic):
     # Step: recursively move tensor-like objects to device.
     # Why: MF batches are dict-structured and require recursive handling.
     def _to_device(self, obj):
-        """Recursively move tensors (including nested dict values) to target device."""
+        """Recursively move tensors (including nested dict values) to target device.
+
+        This helper accepts nested structures (dicts, lists, tuples) produced by
+        the mixed-frequency data pipeline and places all tensors on `self.device`.
+        Non-tensor values such as `None` are left unchanged.
+        """
         if isinstance(obj, dict):
             return {k: self._to_device(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [self._to_device(v) for v in obj]
         if obj is None:
             return None
         return obj.float().to(self.device)
+
+    def _to_group_dict(self, obj):
+        """Convert a list-structured MF batch to a dict keyed by frequency.
+
+        Accepts either already-dict batches (returned unchanged) or a list/tuple
+        with the same length as `self.args.mf_freqs_list`. On mismatch a
+        `ValueError` is raised so configuration issues are detected early.
+        """
+
+        if obj is None:
+            return None
+        if isinstance(obj, dict):
+            return obj
+        if not isinstance(obj, (list, tuple)):
+            raise ValueError('MF experiment expects list or dict batches for mixed data.')
+
+        group_keys = getattr(self.args, 'mf_freqs_list', [])
+        if len(obj) != len(group_keys):
+            raise ValueError('Batch group count does not match configured mixed groups.')
+        return {group_key: value for group_key, value in zip(group_keys, obj)}
 
     # === ADDED (vs Exp_Long_Term_Forecast) ===
     # Step: validate MF batch structure and move all fields to device.
     # Why: MF assumes frequency-keyed dict batches rather than plain tensors.
     def _prepare_batch(self, batch_x, batch_y, batch_x_mark, batch_y_mark):
         """Validate MF batch format and move all tensors to the selected device."""
-        if not isinstance(batch_x, dict):
-            raise ValueError('MF experiment expects dict batches keyed by frequency.')
+        batch_x = self._to_group_dict(batch_x)
+        batch_y = self._to_group_dict(batch_y)
+        batch_x_mark = self._to_group_dict(batch_x_mark)
+        batch_y_mark = self._to_group_dict(batch_y_mark)
 
         batch_x = self._to_device(batch_x)
         batch_y = self._to_device(batch_y)
@@ -106,19 +135,19 @@ class Exp_Long_Term_Forecast_MF(Exp_Basic):
     def _build_dec_input(self, batch_y: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Build per-frequency decoder input as [history(label_len), zeros(pred_len)]."""
         dec_inp = {}
-        label_len = self.args.label_len
         pred_lens = getattr(self.args, 'mf_pred_lens_map', {})
 
         for f_key, y_f in batch_y.items():
             pred_len_f = pred_lens.get(f_key, self.args.pred_len)
-            if y_f.shape[1] < label_len + pred_len_f:
+            label_len_f = y_f.shape[1] - pred_len_f
+            if label_len_f <= 0:
                 raise ValueError(
-                    'batch_y[{}] length {} is smaller than label_len + pred_len ({})'.format(
-                        f_key, y_f.shape[1], label_len + pred_len_f
+                    'batch_y[{}] length {} is smaller than pred_len ({})'.format(
+                        f_key, y_f.shape[1], pred_len_f
                     )
                 )
             dec_zeros = torch.zeros_like(y_f[:, -pred_len_f:, :]).float()
-            dec_inp[f_key] = torch.cat([y_f[:, :label_len, :], dec_zeros], dim=1).float().to(self.device)
+            dec_inp[f_key] = torch.cat([y_f[:, :label_len_f, :], dec_zeros], dim=1).float().to(self.device)
 
         return dec_inp
 

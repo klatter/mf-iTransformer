@@ -2,6 +2,20 @@
 
 set -euo pipefail
 
+#=============================================================================
+# Dataset preparation helper (Bash)
+#
+# Usage:
+#   ./prepare_datasets.sh
+#
+# Description:
+#   Generates mixed-frequency and downsampled CSV variants used by the
+#   experiment launchers. This script calls `scripts/multifrequency_forecasting/generate_mf_datasets.py`.
+#
+# Environment variables:
+#   PYTHON_EXECUTABLE - if set, used as the Python interpreter.
+#=============================================================================
+
 # Resolve project root relative to this script to support running from any cwd.
 PROJECT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../.." >/dev/null 2>&1 && pwd )"
 cd "$PROJECT_ROOT"

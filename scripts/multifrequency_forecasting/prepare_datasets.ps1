@@ -23,6 +23,21 @@ Write-Host "========================================================="
 Write-Host "Generating MIXED and HIGH Datasets for Experiments"
 Write-Host "========================================================="
 
+<#
+.SYNOPSIS
+Prepare Mixed / Low / High frequency datasets
+
+.DESCRIPTION
+This script wraps the Python utility that generates `_mixed.csv` and
+`_low.csv` variants from raw CSV inputs. It is intended to be run from
+PowerShell on Windows; a Bash variant `prepare_datasets.sh` exists for Unix.
+
+.NOTES
+The script looks for `scripts/generate_mf_datasets.py` and will call the
+Python executable specified by `PYTHON_EXECUTABLE` environment variable
+when available.
+#>
+
 function Invoke-MFDatasetGeneration {
     param(
         [Parameter(Mandatory = $true)][string]$DatasetPath,
