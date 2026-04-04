@@ -25,7 +25,7 @@ Set-Location $ProjectRoot
 $python = if ($env:PYTHON_EXECUTABLE) { $env:PYTHON_EXECUTABLE } else { 'python' }
 
 $predLens = @(96, 192, 336, 720)
-$datasets = @('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2')
+$datasets = @('ETTh1', 'ETTh2')
 
 # Optional override: set the environment variable `MF_DATASETS` to a comma-separated
 # list of dataset identifiers to run a restricted subset. Example:

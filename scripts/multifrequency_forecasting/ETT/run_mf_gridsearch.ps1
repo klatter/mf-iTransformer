@@ -24,7 +24,7 @@ if (Test-Path (Join-Path $ProjectRoot 'scripts/setup_env.ps1')) {
 Set-Location $ProjectRoot
 $python = if ($env:PYTHON_EXECUTABLE) { $env:PYTHON_EXECUTABLE } else { 'python' }
 
-$datasets = @('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2')
+$datasets = @('ETTh1', 'ETTh2')
 
 # Optional override: set the environment variable `MF_DATASETS` to a comma-separated
 # list of dataset identifiers to run a restricted subset. Example:

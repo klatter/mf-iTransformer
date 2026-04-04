@@ -21,7 +21,7 @@ source "$PROJECT_ROOT/scripts/setup_env.sh"
 cd "$PROJECT_ROOT"
 
 PYTHON_BIN="${PYTHON_EXECUTABLE:-python}"
-DATASETS=(ETTh1 ETTh2 ETTm1 ETTm2)
+DATASETS=(ETTh1 ETTh2)
 
 # Optional override via environment variable `MF_DATASETS` (comma-separated).
 # Example:

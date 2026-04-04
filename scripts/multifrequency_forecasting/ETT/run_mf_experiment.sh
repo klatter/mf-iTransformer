@@ -23,7 +23,7 @@ cd "$PROJECT_ROOT"
 
 PYTHON_BIN="${PYTHON_EXECUTABLE:-python}"
 PRED_LENS=(96 192 336 720)
-DATASETS=(ETTh1 ETTh2 ETTm1 ETTm2)
+DATASETS=(ETTh1 ETTh2)
 
 # Optional override via environment variable `MF_DATASETS` (comma-separated).
 # Example:
