@@ -24,6 +24,14 @@ PYTHON_BIN="${PYTHON_EXECUTABLE:-python}"
 PRED_LENS=(96 192 336 720)
 DATASETS=(ETTh1 ETTh2 ETTm1 ETTm2)
 
+# Optional override via environment variable `MF_DATASETS` (comma-separated).
+# Example:
+#   MF_DATASETS="ETTh1,ETTm1" ./run_hf_baseline.sh
+if [ -n "${MF_DATASETS:-}" ]; then
+  IFS=',' read -r -a DATASETS <<< "$MF_DATASETS"
+  echo "Overriding datasets list from MF_DATASETS: ${DATASETS[*]}"
+fi
+
 get_dims() {
   local dataset="$1"
   local pred_len="$2"

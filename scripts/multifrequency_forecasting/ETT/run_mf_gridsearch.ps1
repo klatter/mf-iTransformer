@@ -25,6 +25,14 @@ Set-Location $ProjectRoot
 $python = if ($env:PYTHON_EXECUTABLE) { $env:PYTHON_EXECUTABLE } else { 'python' }
 
 $datasets = @('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2')
+
+# Optional override: set the environment variable `MF_DATASETS` to a comma-separated
+# list of dataset identifiers to run a restricted subset. Example:
+#   $env:MF_DATASETS = 'ETTh1,ETTm1'; .\scripts\multifrequency_forecasting\ETT\run_mf_gridsearch.ps1
+if ($env:MF_DATASETS) {
+    $datasets = $env:MF_DATASETS -split ',' | ForEach-Object { $_.Trim() }
+    Write-Host "Overriding datasets list from MF_DATASETS: $($datasets -join ',')"
+}
 $learningRates = @(0.0001, 0.0005, 0.001)
 $dModels = @(128, 256, 512)
 $freqGroups = '0,1,2,3,4,5;6'

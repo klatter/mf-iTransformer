@@ -26,6 +26,14 @@ $python = if ($env:PYTHON_EXECUTABLE) { $env:PYTHON_EXECUTABLE } else { 'python'
 
 $predLens = @(96, 192, 336, 720)
 $datasets = @('ETTh1', 'ETTh2', 'ETTm1', 'ETTm2')
+
+# Optional override: set the environment variable `MF_DATASETS` to a comma-separated
+# list of dataset identifiers to run a restricted subset. Example:
+#   $env:MF_DATASETS = 'ETTh1,ETTm1'; .\scripts\multifrequency_forecasting\ETT\run_mf_experiment.ps1
+if ($env:MF_DATASETS) {
+    $datasets = $env:MF_DATASETS -split ',' | ForEach-Object { $_.Trim() }
+    Write-Host "Overriding datasets list from MF_DATASETS: $($datasets -join ',')"
+}
 $freqGroups = '0,1,2,3,4,5;6'
 
 function Get-Dims {
