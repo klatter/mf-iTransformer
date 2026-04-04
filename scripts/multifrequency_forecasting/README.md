@@ -45,6 +45,26 @@ Both Bash (`.sh`) and PowerShell (`.ps1`) variants are available.
 .\scripts\multifrequency_forecasting\ETT\run_mf_experiment.ps1
 ```
 
+### Overriding which datasets run
+
+You can override the default dataset list used by the launcher scripts using the
+`MF_DATASETS` environment variable. Provide a comma-separated list of dataset
+identifiers (e.g. `ETTh1`, `ETTm1`). This works for both Bash and PowerShell
+launchers.
+
+PowerShell example (run only ETTh1 and ETTm1):
+
+```powershell
+$env:MF_DATASETS = 'ETTh1,ETTm1'
+.\scripts\multifrequency_forecasting\ETT\run_mf_experiment.ps1
+```
+
+Bash example (run only ETTh1 and ETTm1):
+
+```bash
+MF_DATASETS="ETTh1,ETTm1" ./scripts/multifrequency_forecasting/ETT/run_mf_experiment.sh
+```
+
 or:
 
 ```powershell

@@ -23,7 +23,15 @@ cd "$PROJECT_ROOT"
 
 PYTHON_BIN="${PYTHON_EXECUTABLE:-python}"
 PRED_LENS=(96 192 336 720)
-DATASETS=(ETTh1 ETTh2 ETTm1 ETTm2)
+DATASETS=(ETTh1 ETTh2)
+
+# Optional override via environment variable `MF_DATASETS` (comma-separated).
+# Example:
+#   MF_DATASETS="ETTh1,ETTm1" ./run_mf_experiment.sh
+if [ -n "${MF_DATASETS:-}" ]; then
+  IFS=',' read -r -a DATASETS <<< "$MF_DATASETS"
+  echo "Overriding datasets list from MF_DATASETS: ${DATASETS[*]}"
+fi
 FREQ_GROUPS="0,1,2,3,4,5;6"
 
 get_dims() {

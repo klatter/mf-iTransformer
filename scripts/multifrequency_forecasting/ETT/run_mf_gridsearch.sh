@@ -21,7 +21,15 @@ source "$PROJECT_ROOT/scripts/setup_env.sh"
 cd "$PROJECT_ROOT"
 
 PYTHON_BIN="${PYTHON_EXECUTABLE:-python}"
-DATASETS=(ETTh1 ETTh2 ETTm1 ETTm2)
+DATASETS=(ETTh1 ETTh2)
+
+# Optional override via environment variable `MF_DATASETS` (comma-separated).
+# Example:
+#   MF_DATASETS="ETTh1,ETTm1" ./run_mf_gridsearch.sh
+if [ -n "${MF_DATASETS:-}" ]; then
+  IFS=',' read -r -a DATASETS <<< "$MF_DATASETS"
+  echo "Overriding datasets list from MF_DATASETS: ${DATASETS[*]}"
+fi
 LRS=(0.0001 0.0005 0.001)
 DMODELS=(128 256 512)
 FREQ_GROUPS="0,1,2,3,4,5;6"

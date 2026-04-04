@@ -2,21 +2,24 @@ import numpy as np
 
 
 def RSE(pred, true):
-    return np.sqrt(np.sum((true - pred) ** 2)) / np.sqrt(np.sum((true - true.mean()) ** 2))
+    return np.sqrt(np.nansum((true - pred) ** 2)) / np.sqrt(np.nansum((true - np.nanmean(true)) ** 2))
 
 
 def CORR(pred, true):
-    u = ((true - true.mean(0)) * (pred - pred.mean(0))).sum(0)
-    d = np.sqrt(((true - true.mean(0)) ** 2 * (pred - pred.mean(0)) ** 2).sum(0))
-    return (u / d).mean(-1)
+    # Pearson correlation, NaN-safe
+    true_mean = np.nanmean(true, axis=0)
+    pred_mean = np.nanmean(pred, axis=0)
+    u = np.nansum((true - true_mean) * (pred - pred_mean), axis=0)
+    d = np.sqrt(np.nansum((true - true_mean) ** 2, axis=0) * np.nansum((pred - pred_mean) ** 2, axis=0))
+    return np.nanmean(u / d)
 
 
 def MAE(pred, true):
-    return np.mean(np.abs(pred - true))
+    return np.nanmean(np.abs(pred - true))
 
 
 def MSE(pred, true):
-    return np.mean((pred - true) ** 2)
+    return np.nanmean((pred - true) ** 2)
 
 
 def RMSE(pred, true):
@@ -24,11 +27,11 @@ def RMSE(pred, true):
 
 
 def MAPE(pred, true):
-    return np.mean(np.abs((pred - true) / true))
+    return np.nanmean(np.abs((pred - true) / true))
 
 
 def MSPE(pred, true):
-    return np.mean(np.square((pred - true) / true))
+    return np.nanmean(np.square((pred - true) / true))
 
 
 def metric(pred, true):
