@@ -164,8 +164,19 @@ class Exp_Long_Term_Forecast_MF(Exp_Basic):
         for f_key, pred in outputs.items():
             if f_key not in targets:
                 continue
+            target = targets[f_key]
             weight = loss_weights.get(f_key, 1.0)
-            loss = loss + weight * criterion(pred, targets[f_key])
+            # compute MSE ignoring NaNs in the target
+            diff = pred - target
+            if torch.isnan(target).all():
+                # nothing to compute for this head
+                continue
+            valid_mask = ~torch.isnan(target)
+            if valid_mask.sum() == 0:
+                continue
+            se = (diff[valid_mask] ** 2)
+            loss_f = torch.mean(se)
+            loss = loss + weight * loss_f
         return loss
 
     # === MODIFIED (vs Exp_Long_Term_Forecast) ===
